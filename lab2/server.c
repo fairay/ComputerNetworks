@@ -1,89 +1,137 @@
-#include <arpa/inet.h>
+#include "header.h"
 #include <netinet/in.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <arpa/inet.h>
+#include <signal.h>
+#include <fcntl.h>
 
-#include "settings.h"
+#define CLIENT_N    5
 
-void perror_and_exit(char *s)
+void close_sockets(int *sock_arr, int main_sock)
 {
-	perror(s);
-	exit(1);
+    for (int i=0; i<CLIENT_N; i++)
+        close(sock_arr[i]);
+    close(main_sock);
 }
 
-
-void convert_and_print(char *b)
+void sigint_action(int signum)
 {
-    int n = atoi(b);
-    char res2[RES_LEN] = { 0 };
-    convert_int(n, 2, res2);
-        
-    char res14[RES_LEN] = { 0 };
-    convert_int(n, 14, res14);
-                
-    printf("decimal: %d\n", n);
-    printf("binary: %s\n", res2);
-    printf("octal: %o\n", n);
-    printf("hexadecimal: %x\n", n);
-    printf("14th: %s\n\n", res14); 
+    printf("\nInterrupt signal received, closing server\n");
+    exit(0);
 }
 
-
-// a - число в 10й СС
-// p - основание СС [2, 30]
-// s - строка для результата
-int convert_int(int a, int p, char *s)
+int* empty_socket(int *client_sock)
 {
-    char letters[30] = {"0123456789ABCDEFGHIJKLMNOPQRST"};
-    
-    int num = (int)a;
-    int rest = num % p;
-    num /= p;
-    if (num == 0)
+    for (int i=0; i<CLIENT_N; i++)
     {
-        s[0] = letters[rest]; 
-        return 1;
+        if (!client_sock[i])
+            return &client_sock[i];
     }
-    int k = convert_int(num, p, s);
-    s[k++] = letters[rest];
-    return k;
+    return NULL;
 }
 
 
 int main(void)
 {
-    struct sockaddr_in server_addr, client_addr;
-    int sock, slen = sizeof(client_addr);
-    char buf[MSG_LEN];
-
-    printf("Server started\n");
-
-    if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
-        perror_and_exit("socket");
-
-    memset((char *)&server_addr, 0, sizeof(server_addr));
+    struct sockaddr_in serv_addr;
     
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(SOCK_PORT);
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    
-    if (bind(sock, &server_addr, sizeof(server_addr)) == -1)
-        perror_and_exit("bind");
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    fcntl(sock, F_SETFL, O_NONBLOCK);
+    if (sock < 0) 
+    {
+        perror("socket failed");
+        return EXIT_FAILURE;
+    }
 
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    serv_addr.sin_port = htons(SERV_PORT);
+    if (bind(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) 
+    {
+        close(sock);
+        perror("bind failed\n");
+        return EXIT_FAILURE;
+    }
+
+    if (listen(sock, CLIENT_N))
+    {
+        close(sock);
+        perror("listen failed\n");
+        return EXIT_FAILURE;
+    }
+
+    int client_sock[CLIENT_N];
+    for (int i=0; i<CLIENT_N; i++)
+        client_sock[i] = 0;
+
+    printf("Socket linked, server listening\n");
+    fd_set sock_set;
+    int max_sock;
+
+    signal(SIGINT, sigint_action);
     while (1)
     {
-        if (recvfrom(sock, buf, MSG_LEN, 0, &client_addr, &slen) == -1)
-            perror_and_exit("recvfrom()");
-        
-        printf("Received packet from %s:%d\n\n",
-            inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-        
-        convert_and_print(buf);
-	}
+        struct timeval interval = {10, 0};
+        max_sock = sock;
+        FD_ZERO(&sock_set);
 
-	close(sock);
-	return 0;
+        FD_SET(sock, &sock_set);
+        for (int i=0; i<CLIENT_N; i++)
+        {
+            if (client_sock[i])
+            {
+                FD_SET(client_sock[i], &sock_set);
+                max_sock = MAX(max_sock, client_sock[i]);
+            }
+        }
+
+        int code = select(max_sock+1, &sock_set, NULL, NULL, &interval);
+        if (code == 0)
+        {
+            close_sockets(client_sock, sock);
+            printf("server closed\n");
+            return 0;
+        }
+        else if (code < 0)
+        {
+            close_sockets(client_sock, sock);
+            perror("select failed\n");
+            return EXIT_FAILURE;
+        }
+
+        if (FD_ISSET(sock, &sock_set))
+        {
+            int new_sock = accept(sock, NULL, NULL);
+            if (new_sock < 0)
+            {
+                close_sockets(client_sock, sock);
+                perror("aceept failed\n");
+                return EXIT_FAILURE;
+            }
+            
+            *empty_socket(client_sock) = new_sock;
+        }
+
+        for (int i=0; i<CLIENT_N; i++)
+        {
+            if (client_sock[i] && FD_ISSET(client_sock[i], &sock_set))
+            {
+                char buf[BUF_SIZE];
+                int bytes = recvfrom(client_sock[i], buf, sizeof(buf), 0, NULL, NULL);
+                if (bytes <= 0)
+                {
+                    printf("Client №%d disconnected\n", i);
+                    close(client_sock[i]);
+                    client_sock[i] = 0;
+                } 
+                else 
+                {
+                    buf[bytes] = '\0';
+                    printf("Server received: %s\n", buf);
+                }
+            }
+        }
+    }
+
+    close_sockets(client_sock, sock);
+    return 0;
 }

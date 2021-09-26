@@ -7,4 +7,3 @@ client.o: header.h client.c
 
 clean:	
 	rm -f *.o
-	rm -f *.soc

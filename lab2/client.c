@@ -1,40 +1,65 @@
 #include "header.h"
 
-#define handle_error(val, msg) \
-    { if (val < 0) \
-    { perror(msg); return (EXIT_FAILURE); }}
+#define SERV_ADDRESS    "127.0.0.1"
 
-int main()
+
+int main(void)
 {
+    struct hostent *server;
+    struct sockaddr_in serv_addr;
     char buf[BUF_SIZE];
-    int sock;
-    struct sockaddr srvr_name;
+    char msg[BUF_SIZE];
 
-    sock = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (sock < 0)
+    printf("Input message: ");
+    if (!scanf("%s", msg))
+    {
+        perror("scaning message failed\n");
+        return EXIT_FAILURE;
+    }
+
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) 
     {
         perror("socket failed\n");
         return EXIT_FAILURE;
     }
 
-    srvr_name.sa_family = AF_UNIX;
-    strcpy(srvr_name.sa_data, SOCK_NAME);
+    server = gethostbyname(SERV_ADDRESS);
+    if (!server)
+    {
+        close(sock);
+        perror("host not found\n");
+        return EXIT_FAILURE;
+    }
 
-    // strcpy(buf, "Hello, Unix sockets!");
-    printf("Input message: ");
-    if (!scanf("%s", buf))
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr = *((struct in_addr*) server->h_addr_list[0]);
+    serv_addr.sin_port = htons(SERV_PORT);
+
+    if (connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
     {
-        perror("scanf failed\n");
+        close(sock);
+        perror("connect failed\n");
         return EXIT_FAILURE;
     }
-    if (sendto(sock, buf, strlen(buf), 0, &srvr_name,
-            strlen(srvr_name.sa_data) + sizeof(srvr_name.sa_family)) < 0)
+
+
+    for (int i=0; i<10; i++)
     {
-        perror("sendto failed\n");
-        return EXIT_FAILURE;
+        sprintf(buf, "Message from %s", msg);
+        printf("Sending message... ");
+        if (send(sock, buf, strlen(buf), 0) < 0)
+        {
+            close(sock);
+            perror("send failed\n");
+            return EXIT_FAILURE;
+        }
+        printf("done\n");
+        
+        sleep(2);
+        // close(sock);
     }
-    
-    printf("Message sent \n");
+
     close(sock);
     return 0;
 }
