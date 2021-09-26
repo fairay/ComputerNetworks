@@ -8,16 +8,16 @@ int main(void)
     struct hostent *server;
     struct sockaddr_in serv_addr;
     char buf[BUF_SIZE];
-    char msg[BUF_SIZE];
+    int msg;
 
-    printf("Input message: ");
-    if (!scanf("%s", msg))
+    printf("Input number: ");
+    if (!scanf("%d", &msg) || !sprintf(buf, "%d", msg))
     {
         perror("scaning message failed\n");
         return EXIT_FAILURE;
     }
 
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    int sock = socket(SOCKET_TYPE);
     if (sock < 0) 
     {
         perror("socket failed\n");
@@ -36,30 +36,15 @@ int main(void)
     serv_addr.sin_addr = *((struct in_addr*) server->h_addr_list[0]);
     serv_addr.sin_port = htons(SERV_PORT);
 
-    if (connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+    printf("Sending message... ");
+    if (sendto(sock, buf, strlen(buf), 0, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) < 0)
     {
         close(sock);
-        perror("connect failed\n");
+        perror("send failed\n");
         return EXIT_FAILURE;
     }
-
-
-    for (int i=0; i<10; i++)
-    {
-        sprintf(buf, "Message from %s", msg);
-        printf("Sending message... ");
-        if (send(sock, buf, strlen(buf), 0) < 0)
-        {
-            close(sock);
-            perror("send failed\n");
-            return EXIT_FAILURE;
-        }
-        printf("done\n");
-        
-        sleep(2);
-        // close(sock);
-    }
-
+    printf("done\n");
+    
     close(sock);
     return 0;
 }
