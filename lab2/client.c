@@ -2,7 +2,6 @@
 
 #define SERV_ADDRESS    "127.0.0.1"
 
-
 int main(void)
 {
     struct hostent *server;
@@ -11,11 +10,12 @@ int main(void)
     int msg;
 
     printf("Input number: ");
-    if (!scanf("%d", &msg) || !sprintf(buf, "%d", msg))
+    if (!scanf("%d", &msg))
     {
         perror("scaning message failed\n");
         return EXIT_FAILURE;
     }
+    *((int *)buf) = msg;
 
     int sock = socket(SOCKET_TYPE);
     if (sock < 0) 
@@ -37,7 +37,7 @@ int main(void)
     serv_addr.sin_port = htons(SERV_PORT);
 
     printf("Sending message... ");
-    if (sendto(sock, buf, strlen(buf), 0, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) < 0)
+    if (sendto(sock, &msg, sizeof(int), 0, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) < 0)
     {
         close(sock);
         perror("send failed\n");
