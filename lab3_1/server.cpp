@@ -1,4 +1,3 @@
-#include "common.h"
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <signal.h>
@@ -6,6 +5,8 @@
 #include <vector>
 #include <stdexcept>
 #include <iostream>
+
+#include "common.h"
 
 /*
 void close_sockets(std::vector<int> &clients, int main_sock)
@@ -47,10 +48,13 @@ int accept_new(std::vector<int> &clients, int main_sock)
 }
 */
 
+std::string look_dir(void);
+
 class Server
 {
 private:
     const int client_n = 10;
+    struct timeval delay = {60, 0};
     std::vector<int> clients;
     int sock = 0;
     bool is_running = false;
@@ -59,13 +63,13 @@ private:
     void _accept_new();
     void _close_client(int i);
 public:
-    Server();
+    Server(uint port);
     ~Server();
 
     void run();
 };
 
-Server::Server()
+Server::Server(uint port)
 {
     struct sockaddr_in serv_addr;
     sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -75,7 +79,7 @@ Server::Server()
 
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(SERV_PORT);
+    serv_addr.sin_port = htons(port);
     if (bind(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) 
         throw std::runtime_error("Error: bind failed");
 
@@ -98,7 +102,6 @@ void Server::run()
     is_running = true;
     while (is_running)
     {
-        struct timeval interval = {10, 0};
         int max_sock = sock;
         fd_set sock_set;
         FD_ZERO(&sock_set);
@@ -110,7 +113,7 @@ void Server::run()
             max_sock = MAX(max_sock, sock);
         }
 
-        int code = select(max_sock+1, &sock_set, NULL, NULL, &interval);
+        int code = select(max_sock+1, &sock_set, NULL, NULL, &delay);
         if (code == 0) break;
         else if (code <0)
             throw std::runtime_error("Error: select failed");
@@ -122,8 +125,18 @@ void Server::run()
         {
             if (!FD_ISSET(clients[i], &sock_set))
                 continue;
-            if (_handle_client(i))
+            
+            switch (_handle_client(i))
+            {
+            case 1:
                 printf("Client disconnected\n");
+                break;
+            case 2:
+                printf("File not found\n");
+                break;
+            default:
+                break;
+            }
         }
     }
 }
@@ -141,8 +154,34 @@ int Server::_handle_client(int i)
     {
         buf[bytes] = '\0';
         printf("Server received: %s\n", buf);
-        return 0;
-    }    
+    }
+
+    file_msg code;
+    FILE *fd = fopen(buf, "rb");
+    if (fd)
+        code = FILE_OK;
+    else
+        code = NOT_FOUND;
+
+    if (send(sock, &code, sizeof(code), 0) <= 0)
+        throw std::runtime_error("Error: send code failed");
+    
+    if (code != FILE_OK)
+        return 2;
+
+    size_t rret, wret;
+    int bytes_read;
+    while (!feof(fd)) 
+    {
+        if ((bytes_read = fread(&buf, 1, BUF_SIZE, fd)) > 0)
+            send(sock, buf, bytes_read, 0);
+        else if (bytes_read < 0)
+            throw std::runtime_error("Error: file sending  failed");
+        else
+            break;
+    }
+    fclose(fd);
+    return 0;
 }
 
 void Server::_close_client(int i)
@@ -158,122 +197,26 @@ void Server::_accept_new()
     if (new_sock < 0)
         throw std::runtime_error("Error: accept failed");
     clients.push_back(new_sock);
+
+    std::string dir = look_dir();
+    if (send(new_sock, dir.c_str(), dir.length(), 0) < 0)
+        throw std::runtime_error("Error: directory content sending failed");
+    printf("Files sended\n");
 }
 
 int main(void)
 {
-    Server s = Server();
-    printf("Socket linked, server listening\n");
+    std::string dir = look_dir();
+    std::cout << "Avaliable files:" << std::endl << dir;
+
     try
     {
+        Server s = Server(SERV_PORT);
+        printf("Socket linked, server listening\n");
         s.run();
     }
-    catch(const std::exception& e)
+    catch (const std::exception& e)
     {
         std::cerr << e.what() << '\n';
     }
-    
-    /*
-    struct sockaddr_in serv_addr;
-    std::vector<int> client_sock;
-    
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    fcntl(sock, F_SETFL, O_NONBLOCK);
-    if (sock < 0) 
-    {
-        perror("socket failed");
-        return EXIT_FAILURE;
-    }
-
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(SERV_PORT);
-    if (bind(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) 
-    {
-        close(sock);
-        perror("bind failed\n");
-        return EXIT_FAILURE;
-    }
-
-    if (listen(sock, CLIENT_N))
-    {
-        close(sock);
-        perror("listen failed\n");
-        return EXIT_FAILURE;
-    }
-
-    printf("Socket linked, server listening\n");
-    fd_set sock_set;
-    int max_sock;
-
-    signal(SIGINT, sigint_action);
-    while (1)
-    {
-        struct timeval interval = {10, 0};
-        max_sock = sock;
-        FD_ZERO(&sock_set);
-
-        FD_SET(sock, &sock_set);
-        for (int i=0; i<CLIENT_N; i++)
-        {
-            if (client_sock[i])
-            {
-                FD_SET(client_sock[i], &sock_set);
-                max_sock = MAX(max_sock, client_sock[i]);
-            }
-        }
-
-        int code = select(max_sock+1, &sock_set, NULL, NULL, &interval);
-        if (code == 0)
-        {
-            close_sockets(client_sock, sock);
-            printf("server closed\n");
-            return 0;
-        }
-        else if (code < 0)
-        {
-            close_sockets(client_sock, sock);
-            perror("select failed\n");
-            return EXIT_FAILURE;
-        }
-
-        if (FD_ISSET(sock, &sock_set))
-        {
-            int new_sock = accept(sock, NULL, NULL);
-            if (new_sock < 0)
-            {
-                close_sockets(client_sock, sock);
-                perror("aceept failed\n");
-                return EXIT_FAILURE;
-            }
-            add_socket(client_sock, new_sock);
-        }
-
-        for (int i=0; i<CLIENT_N; i++)
-        {
-            if (handle_client(client_sock[i], FD_ISSET(client_sock[i], &sock_set))) 
-                    printf("Client №%d disconnected\n", i);
-            
-            // if (client_sock[i] && FD_ISSET(client_sock[i], &sock_set))
-            // {
-            //     char buf[BUF_SIZE];
-            //     int bytes = recvfrom(client_sock[i], buf, sizeof(buf), 0, NULL, NULL);
-            //     if (bytes <= 0)
-            //     {
-            //         printf("Client №%d disconnected\n", i);
-            //         close(client_sock[i]);
-            //         client_sock[i] = 0;
-            //     } 
-            //     else 
-            //     {
-            //         buf[bytes] = '\0';
-            //         printf("Server received: %s\n", buf);
-            //     }
-            // }
-        }
-    }
-
-    close_sockets(client_sock, sock);
-    return 0;
-    */
 }

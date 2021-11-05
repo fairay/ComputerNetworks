@@ -11,8 +11,13 @@
 #include <netdb.h>
 
 #define BUF_SIZE    64
-#define SOCK_NAME   "socket.soc"
-#define SERV_PORT   1830
+#define SERV_PORT   1831
+
+enum file_msg
+{
+    FILE_OK,
+    NOT_FOUND
+};
 
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
