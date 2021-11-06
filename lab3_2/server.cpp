@@ -164,7 +164,7 @@ int Server::_handle_client(int i)
     const char* buf2 = st.c_str();
     std::cout << st.length() << std::endl;
     std::cout << buf2 << std::endl;
-    write(clients[i], buf2, st.length());
+    send(clients[i], buf2, st.length(), 0);
 
     std::cout << code << std::endl;
 
