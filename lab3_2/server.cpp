@@ -5,6 +5,7 @@
 #include <vector>
 #include <stdexcept>
 #include <iostream>
+#include <memory>
 
 #include "common.h"
 #include "http.hpp"
@@ -14,6 +15,7 @@ std::string look_dir(void);
 class Server
 {
 private:
+    const uint port;
     const int client_n = 10;
     struct timeval delay = {60, 0};
     std::vector<int> clients;
@@ -25,13 +27,14 @@ private:
     void _close_client(int i);
 public:
     Server(uint port);
+    Server(const Server& s) = default;
     ~Server();
 
     void run();
     void stop();
 };
 
-Server::Server(uint port)
+Server::Server(uint port_): port(port_)
 {
     struct sockaddr_in serv_addr;
     sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -52,6 +55,7 @@ Server::Server(uint port)
 Server::~Server()
 {
     this->stop();
+    std::cout << "Closed\n";
 }
 void Server::stop()
 {
@@ -141,15 +145,14 @@ int Server::_handle_client(int i)
     
     HttpRequest req(s);
     HttpResponse res;
-    std::cout << req.method << std::endl;
-    std::cout << req.path << std::endl;
-    std::cout << req.version << std::endl;
 
-    std::string path = "static/" + req.path;
+    std::string path;
+    if (req.path != "")
+        path = "static/" + req.path;
+    else
+        path = "static/index.html";
     int code = res.from_file(path);
 
-    std::cout << "req.version" << std::endl;
-    char buf[BUF_SIZE];
     FILE *fd;
     if (code == 404)
         fd = fopen("static/404.html", "rb"); 
@@ -157,20 +160,15 @@ int Server::_handle_client(int i)
         fd = fopen(path.c_str(), "rb");
     
 
-    std::cout << "req.version" << std::endl;
     int bytes_read;
 
     std::string st = res.to_string();
-    const char* buf2 = st.c_str();
-    std::cout << st.length() << std::endl;
-    std::cout << buf2 << std::endl;
-    send(clients[i], buf2, st.length(), 0);
+    send(clients[i], st.c_str(), st.length(), 0);
 
-    std::cout << code << std::endl;
-
+    char buf[BUF_SIZE];
     while (!feof(fd)) 
     {
-        if ((bytes_read = fread(&buf, 1, BUF_SIZE, fd)) > 0)
+        if ((bytes_read = fread(buf, 1, BUF_SIZE, fd)) > 0)
             send(clients[i], buf, bytes_read, 0);
         else if (bytes_read < 0)
             throw std::runtime_error("Error: file sending  failed");
@@ -178,7 +176,6 @@ int Server::_handle_client(int i)
             break;
     }
 
-    std::cout << "req.version last" << std::endl;
     fclose(fd);
 
     _close_client(i);
@@ -201,13 +198,34 @@ void Server::_accept_new()
     printf("Client connected\n");
 }
 
-int main(void)
+std::shared_ptr<Server> s;
+
+void sigint_action(int signum)
 {
+    printf("\nInterrupt signal received, closing server\n");
+    if (s) 
+    {
+        s->stop();
+    }
+    exit(0);
+}
+
+int main(int argc, char* argv[])
+{
+    signal(SIGINT, sigint_action);
+
+    uint port = SERV_PORT;
+    if (argc == 2)
+    {
+        sscanf(argv[1], "%ud", &port);
+    }
+    std::cout << "http://localhost:"<< port << std::endl;
+
     try
     {
-        Server s = Server(SERV_PORT);
+        s = std::shared_ptr<Server>(new Server(port));
         printf("Socket linked, server listening\n");
-        s.run();
+        s->run();
     }
     catch (const std::exception& e)
     {

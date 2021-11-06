@@ -20,6 +20,9 @@ class HttpResponse
 {
 private:
     std::string head;
+
+    void _add_content_headers(std::string f_name, size_t size);
+    void _add_time_header();
 public:
     HttpResponse();
     ~HttpResponse();
