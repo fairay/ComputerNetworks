@@ -1,4 +1,5 @@
 #include "common.h"
+#include "http.hpp"
 #include <iostream>
 
 #define SERV_ADDRESS    "127.0.0.1"
@@ -7,13 +8,11 @@ class Client
 {
 private:
     int sock = 0;
-
-    void recv_map();
 public:
     Client(std::string address, uint port);
     ~Client();
 
-    void get_file(std::string path, std::string save_path);
+    void send_http(std::string path);
 };
 
 Client::Client(std::string address, uint port)
@@ -35,8 +34,6 @@ Client::Client(std::string address, uint port)
 
     if (connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
         throw std::runtime_error("Error: connect failed");
-    
-    recv_map();
 }
 
 Client::~Client()
@@ -45,38 +42,17 @@ Client::~Client()
         close(sock);
 }
 
-void Client::recv_map()
+void Client::send_http(std::string path) 
 {
-    const int bsize = 10;
-    char buf[bsize+1];
-    int bytes;
-    do
-    {
-        bytes = recv(sock, (void*)buf, bsize, 0);
-        buf[bytes] = '\0';
-        if (bytes <= 0)
-            throw std::runtime_error("Error: recv map failed");
-        else 
-            std::cout << buf;
-    } while (bytes == bsize);
-}
-
-void Client::get_file(std::string path, std::string save_path="") 
-{
-    if (send(sock, path.c_str(), path.length(), 0) < 0)
+    HttpRequest req;
+    req.path += path;
+    std::string req_str = req.to_string();
+    std::cout << req_str << std::endl;
+    if (send(sock, req_str.c_str(), req_str.length(), 0) < 0)
         throw std::runtime_error("Error: send path failed");
     
-    file_msg code;
-    if (recv(sock, &code, sizeof(code), 0) <= 0)
-        throw std::runtime_error("Error: recv code failed");
-    else if (code != FILE_OK)
-        throw std::runtime_error("Error: file retriving error");
-    
-    if (save_path == "")
-    {
-        std::size_t found = path.find_last_of("/\\");
-        save_path = path.substr(found+1);
-    }
+    std::size_t found = path.find_last_of("/\\");
+    std::string save_path = path.substr(found+1);
 
     const int bsize = BUF_SIZE;
     char buf[bsize+1];
@@ -86,11 +62,11 @@ void Client::get_file(std::string path, std::string save_path="")
     {
         bytes = recv(sock, (void*)buf, bsize, 0);
         buf[bytes] = '\0';
-        if (bytes <= 0)
+        if (bytes < 0)
             throw std::runtime_error("Error: recv map failed");
         else 
             fwrite(&buf, 1, bytes, fd);
-    } while (bytes == bsize);
+    } while (bytes != 0);
     fclose(fd);
 }
 
@@ -102,7 +78,7 @@ int main(void)
     printf("Input path: ");
     std::cin >> path;
 
-    c.get_file(path);
+    c.send_http(path);
     std::cout << "File recived" << std::endl;
 
     return 0;

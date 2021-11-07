@@ -1,5 +1,5 @@
 CPPFLAGS=-g -pthread -I/sw/include/root
-LDFLAGS=-g
+LDFLAGS=-g -pthread
 LDLIBS=-L/sw/lib/root -lCore
 
 SRCS=server.cpp client.cpp http.cpp
@@ -12,7 +12,7 @@ all: $(OBJDIR)/server $(OBJDIR)/client
 $(OBJDIR)/server: $(OBJDIR)/server.o $(OBJDIR)/http.o
 	g++ $(LDFLAGS) -o $@ $^
 
-$(OBJDIR)/client: $(OBJDIR)/client.o
+$(OBJDIR)/client: $(OBJDIR)/client.o $(OBJDIR)/http.o
 	g++ $(LDFLAGS) -o $@ $^
 
 (%.o): %.cpp

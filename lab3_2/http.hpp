@@ -12,8 +12,11 @@ public:
     std::map<std::string, std::string> headers {};
     std::string body;
 
+    HttpRequest();
     HttpRequest(const std::string &content);
     ~HttpRequest();
+
+    std::string to_string();
 };
 
 class HttpResponse

@@ -15,6 +15,8 @@ Cookie: wp-settings
 Connection: keep-alive
 */
 
+HttpRequest::HttpRequest(): method("GET"), path("/"), version("HTTP/1.1"), body("") {}
+
 HttpRequest::HttpRequest(const std::string &content)
 {
     size_t from, to;
@@ -31,14 +33,13 @@ HttpRequest::HttpRequest(const std::string &content)
     version = content.substr(from, to-from);
 
     if (method != "GET")
-    {
-        std::cout << method;
         throw std::runtime_error("Error: unsupported method of request");
-    }
     if (version != "HTTP/1.1")
         throw std::runtime_error("Error: unsupported version of request");
     
+    std::cout << "get headers";
     to = _read_headers(content.substr(to+2));
+    std::cout << "done \n";
     body = content.substr(to+1);
 }
 
@@ -51,6 +52,9 @@ size_t HttpRequest::_read_headers(const std::string &s)
     size_t from = 0, to, sep;
     to = s.find("\n", from);
     sep = s.find(":", from);
+
+    if (sep == std::string::npos) return to;
+    
     do
     {
         std::string key, value;
@@ -65,6 +69,16 @@ size_t HttpRequest::_read_headers(const std::string &s)
     return to;
 }
 
+std::string HttpRequest::to_string()
+{
+    std::string res;
+    res += method + " " + path + " " + version + "\r\n";
+    for ( const auto &p : headers )
+        res += p.first+": "+p.second+"\r\n";
+    res += "\n";
+    res += body;
+    return res;
+}
 
 HttpResponse::HttpResponse(/* args */)
 {
