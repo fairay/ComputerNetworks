@@ -1,27 +1,26 @@
 CPPFLAGS=-g -pthread -I/sw/include/root
 LDFLAGS=-g
 LDLIBS=-L/sw/lib/root -lCore
+
 SRCS=server.cpp client.cpp http.cpp
+OBJDIR = build
 OBJS=$(subst .cpp,.o,$(SRCS))
 EXES=server client
 
-all: server client
+all: $(OBJDIR)/server $(OBJDIR)/client
 
-server: server.o http.o
-	g++ $(LDFLAGS) -o server server.o http.o
+$(OBJDIR)/server: $(OBJDIR)/server.o $(OBJDIR)/http.o
+	g++ $(LDFLAGS) -o $@ $^
 
-client: client.o
-	g++ $(LDFLAGS) -o client client.o
+$(OBJDIR)/client: $(OBJDIR)/client.o
+	g++ $(LDFLAGS) -o $@ $^
 
-server.o: server.cpp common.h
-	g++ $(CPPFLAGS) -c server.cpp
+(%.o): %.cpp
+	g++ $(CPPFLAGS) -c $<
 
-http.o: http.cpp http.hpp
-	g++ $(CPPFLAGS) -c http.cpp
-
-client.o: client.cpp common.h
-	g++ $(CPPFLAGS) -c client.cpp
+$(OBJDIR)/%.o: %.cpp
+	g++ $(CPPFLAGS) -c $< -o $@
 
 RM=rm -f
 clean:
-	$(RM) $(OBJS) $(EXES)
+	$(RM) $(OBJDIR)/*
