@@ -78,8 +78,7 @@ int main(void)
     while (1)
     {
         int num;
-        int bytes = recvfrom(sock, &num, sizeof(num), 0, NULL, NULL);
-        if (bytes <= 0)
+        if (recvfrom(sock, &num, sizeof(num), 0, NULL, NULL) != sizeof(num))
         {
             printf("Error");
             break;

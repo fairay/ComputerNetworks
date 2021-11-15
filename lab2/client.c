@@ -6,7 +6,6 @@ int main(void)
 {
     struct hostent *server;
     struct sockaddr_in serv_addr;
-    char buf[BUF_SIZE];
     int msg;
 
     printf("Input number: ");
@@ -15,7 +14,6 @@ int main(void)
         perror("scaning message failed\n");
         return EXIT_FAILURE;
     }
-    *((int *)buf) = msg;
 
     int sock = socket(SOCKET_TYPE);
     if (sock < 0) 
